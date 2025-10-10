@@ -13,8 +13,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const step3Run = document.getElementById('step3-run');
     const crawlBtn = document.getElementById('crawlBtn');
     const statusDiv = document.getElementById('status');
-    const resultContainer = document.getElementById('result-container');
+    const resultWrapper = document.getElementById('result-wrapper');
     const resultTable = document.getElementById('result-table');
+    const exportContainer = document.getElementById('export-container');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
 
     // --- State Variables ---
     let areaSelector = null;
@@ -24,7 +26,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Event Listeners ---
     changeAreaBtn.addEventListener('click', () => {
         statusDiv.textContent = 'Inspecting page...';
-        // Send a message to the parent window (content.js) to start the inspector
+        step2Pagination.classList.add('hidden');
+        step3Run.classList.add('hidden');
         window.parent.postMessage({ type: 'INIT_INSPECTOR', mode: 'AREA' }, '*');
     });
 
@@ -33,21 +36,16 @@ document.addEventListener('DOMContentLoaded', function() {
         areaStatusText.style.fontWeight = 'bold';
         step1Detection.classList.add('hidden');
         step2Pagination.classList.remove('hidden');
-        // Trigger change event to ensure the correct state is shown
+        step3Run.classList.remove('hidden');
         document.querySelector('input[name="pagination"]:checked').dispatchEvent(new Event('change'));
     });
 
     paginationRadios.forEach(radio => {
         radio.addEventListener('change', (e) => {
-            // Visually select the label
             document.querySelectorAll('.radio-group label').forEach(label => label.classList.remove('selected'));
             e.target.parentElement.classList.add('selected');
-
-            if (e.target.value === 'next') {
-                nextBtnFinder.classList.remove('hidden');
-            } else {
-                nextBtnFinder.classList.add('hidden');
-            }
+            const showPaginationOptions = e.target.value === 'next';
+            nextBtnFinder.classList.toggle('hidden', !showPaginationOptions);
             step3Run.classList.remove('hidden');
         });
     });
@@ -67,35 +65,28 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Reset previous results
         allCrawledProducts = [];
+        maxMediaCount = 0; // Reset media count for new crawl
         renderTable();
-        resultContainer.classList.remove('hidden');
+        resultWrapper.classList.remove('hidden');
         crawlBtn.disabled = true;
         crawlBtn.textContent = 'Crawling...';
         statusDiv.textContent = '';
         
-        // Send crawl command to content.js
         window.parent.postMessage({
             type: 'START_CRAWL',
-            data: {
-                areaSelector: areaSelector,
-                paginationMethod: paginationMethod,
-                paginationSelector: paginationSelector,
-                maxPages: maxPages,
-            }
+            data: { areaSelector, paginationMethod, paginationSelector, maxPages }
         }, '*');
     });
+
+    exportCsvBtn.addEventListener('click', exportToCsv);
 
     // --- Listen for messages from content.js ---
     window.addEventListener('message', (event) => {
         const request = event.data;
-        // Check for the source can be added here for security if needed
-        // if (event.origin !== "chrome-extension://...") return;
-
         if (request.type === 'AREA_SELECTED') {
             areaSelector = request.selector;
-            statusDiv.textContent = 'Area selection confirmed. Please save the area.';
+            statusDiv.textContent = 'Area selection confirmed.';
             statusDiv.style.color = 'green';
             step1Detection.classList.remove('hidden');
         } else if (request.type === 'PAGINATION_SELECTED') {
@@ -121,15 +112,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // --- Result Display Logic ---
-    let maxImageCount = 0;
+    let maxMediaCount = 0;
     function displayProducts(products) {
         products.forEach(product => {
-            // Only add products that have a name
             if (product.productName) {
                 allCrawledProducts.push(product);
-                // Update the maximum number of images found in any product
-                if (product.media && product.media.length > maxImageCount) {
-                    maxImageCount = product.media.length;
+                if (product.media && product.media.length > maxMediaCount) {
+                    maxMediaCount = product.media.length;
                 }
             }
         });
@@ -140,50 +129,100 @@ document.addEventListener('DOMContentLoaded', function() {
         const thead = resultTable.querySelector('thead');
         const tbody = resultTable.querySelector('tbody');
 
-        // Build table header dynamically based on maxImageCount
-        let headerHTML = '<tr><th>#</th><th>Product Name</th><th>Price</th><th>URL</th>';
-        for (let i = 1; i <= maxImageCount; i++) {
-            headerHTML += `<th>Image ${i}</th>`;
-        }
+        let headerHTML = '<tr><th>#</th><th>Product Name</th><th>Price</th><th>Product URL</th>';
+        for (let i = 1; i <= maxMediaCount; i++) headerHTML += `<th>Media ${i}</th>`;
         headerHTML += '<th>Action</th></tr>';
         thead.innerHTML = headerHTML;
 
-        // Clear previous results and build new rows
         tbody.innerHTML = '';
         allCrawledProducts.forEach((product, index) => {
             const row = document.createElement('tr');
-            row.dataset.index = index; // Store original index for deletion
+            row.dataset.index = index;
 
             let rowHTML = `<td>${index + 1}</td>
-                           <td><div style="max-width: 150px; overflow: hidden; text-overflow: ellipsis;">${product.productName || ''}</div></td>
+                           <td><div style="max-width: 150px; overflow: hidden; text-overflow: ellipsis;" title="${product.productName || ''}">${product.productName || ''}</div></td>
                            <td>${product.price || ''}</td>
                            <td><a href="${product.url}" target="_blank">Link</a></td>`;
             
-            // Add image cells
-            for (let i = 0; i < maxImageCount; i++) {
-                const imageUrl = product.media && product.media[i] ? product.media[i].src : '';
-                rowHTML += `<td>${imageUrl ? `<a href="${imageUrl}" target="_blank"><img src="${imageUrl}" width="40" alt="product image" style="display:block; margin:auto;"></a>` : ''}</td>`;
+            for (let i = 0; i < maxMediaCount; i++) {
+                const mediaItem = product.media && product.media[i] ? product.media[i] : null;
+                let cellContent = '';
+                 if (mediaItem) {
+                    if (mediaItem.type === 'image') {
+                        cellContent = `<a href="${mediaItem.src}" target="_blank"><img src="${mediaItem.src}" width="40" alt="product media" style="display:block; margin:auto;"></a>`;
+                    } else if (mediaItem.type === 'video') {
+                        cellContent = `<a href="${mediaItem.src}" target="_blank">Video</a>`;
+                    }
+                }
+                rowHTML += `<td>${cellContent}</td>`;
             }
 
             rowHTML += `<td><button class="delete-btn">🗑️</button></td>`;
             row.innerHTML = rowHTML;
             tbody.appendChild(row);
         });
+
+        exportContainer.classList.toggle('hidden', allCrawledProducts.length === 0);
     }
     
-    // Add a single event listener to the table for deleting rows
     resultTable.addEventListener('click', function(e) {
         if (e.target && e.target.classList.contains('delete-btn')) {
             const row = e.target.closest('tr');
             const indexToRemove = parseInt(row.dataset.index, 10);
-            
-            // Remove the product from the array and re-render the table
             allCrawledProducts.splice(indexToRemove, 1);
             renderTable();
         }
     });
 
-    // Initial state setup
-    document.querySelector('input[name="pagination"]:checked').parentElement.classList.add('selected');
+    // --- CSV Export Logic ---
+    function exportToCsv() {
+        if (allCrawledProducts.length === 0) return;
+
+        const escapeCsvCell = (cell) => {
+            if (cell === null || cell === undefined) return '';
+            const cellString = String(cell);
+            if (cellString.search(/("|,|\n)/g) >= 0) {
+                return `"${cellString.replace(/"/g, '""')}"`;
+            }
+            return cellString;
+        };
+        
+        let headers = ['Product Name', 'Price', 'Product URL'];
+        for (let i = 1; i <= maxMediaCount; i++) headers.push(`Media ${i} URL`);
+        const csvRows = [headers.join(',')];
+
+        allCrawledProducts.forEach(product => {
+            const row = [
+                escapeCsvCell(product.productName),
+                escapeCsvCell(product.price),
+                escapeCsvCell(product.url)
+            ];
+            for (let i = 0; i < maxMediaCount; i++) {
+                const mediaUrl = product.media && product.media[i] ? product.media[i].src : '';
+                row.push(escapeCsvCell(mediaUrl));
+            }
+            csvRows.push(row.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); // Add BOM for Excel
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'products_export.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    // --- Initial State Setup ---
+    function initialize() {
+        step2Pagination.classList.remove('hidden');
+        step3Run.classList.remove('hidden');
+        const defaultRadio = document.querySelector('input[name="pagination"]:checked');
+        defaultRadio.parentElement.classList.add('selected');
+        defaultRadio.dispatchEvent(new Event('change'));
+    }
+
+    initialize();
 });
 

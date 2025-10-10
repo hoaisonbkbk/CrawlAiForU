@@ -25,8 +25,8 @@ function createPanel() {
         position: fixed;
         top: 15px;
         right: 15px;
-        width: 430px;
-        height: 95vh;
+        width: 800px;
+        height: 72vh;
         border: 1px solid #ccc;
         border-radius: 12px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
@@ -57,7 +57,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // --- Bridge: Listen for messages from the panel.html iframe ---
 window.addEventListener('message', (event) => {
-    // Basic security check
+    // Security check: ensure the message is from our iframe
     if (event.source !== panelFrame.contentWindow) return;
 
     const request = event.data;
@@ -91,7 +91,7 @@ function startInspector(mode) {
     document.body.appendChild(highlightElement);
     document.addEventListener('mouseover', onMouseOver);
     document.addEventListener('mouseout', onMouseOut);
-    document.addEventListener('click', onInspectorClick, true); // Use capturing to prevent page navigation
+    document.addEventListener('click', onInspectorClick, true);
 }
 
 function stopInspector() {
@@ -122,7 +122,6 @@ function onInspectorClick(e) {
     if (!inspectorActive) return;
     e.preventDefault();
     e.stopPropagation();
-
     const xpath = getXPath(e.target);
     const messageType = inspectorMode === 'AREA' ? 'AREA_SELECTED' : 'PAGINATION_SELECTED';
     
@@ -131,13 +130,12 @@ function onInspectorClick(e) {
     
     stopInspector();
     
-    // Show panel again after selection is made
+    // Show panel again after selection
     panelFrame.style.display = 'block';
 }
 
 // --- Crawl Logic ---
 function scrapeProductInfo(productNode) {
-    // More robust selectors for common e-commerce sites
     const nameSelectors = ['h1', 'h2', 'h3', '.product-name', '.item-title', '[class*="title"] a', 'a[title]'];
     const priceSelectors = ['.price', '[class*="price"]', '.product-price', '[class*="amount"]'];
     
@@ -154,20 +152,47 @@ function scrapeProductInfo(productNode) {
     }
 
     const media = [];
-    // Prioritize more specific image selectors
-    const imageSelectors = ['img[class*="product"]', 'img[alt]', 'img'];
-    const allImages = productNode.querySelectorAll(imageSelectors.join(', '));
-    allImages.forEach(img => {
-        // Handle lazy-loaded images
-        const imgSrc = img.src || img.getAttribute('data-src');
-        if (imgSrc && !media.some(m => m.src === imgSrc)) {
-            media.push({ type: 'image', src: imgSrc });
+    const foundMediaUrls = new Set();
+
+    // Find images, handling lazy-loading and srcset
+    productNode.querySelectorAll('img').forEach(img => {
+        let imgSrc = img.src || img.getAttribute('data-src') || img.getAttribute('srcset');
+        if (imgSrc) {
+            // Basic srcset handling: take the first URL
+            const finalSrc = imgSrc.includes(',') ? imgSrc.split(',')[0].trim().split(' ')[0] : imgSrc;
+            if (!foundMediaUrls.has(finalSrc)) {
+                media.push({ type: 'image', src: finalSrc });
+                foundMediaUrls.add(finalSrc);
+            }
+        }
+    });
+
+    // Find videos
+    productNode.querySelectorAll('video').forEach(video => {
+        const videoSrc = video.src || video.querySelector('source')?.src;
+        if (videoSrc && !foundMediaUrls.has(videoSrc)) {
+            media.push({ type: 'video', src: videoSrc });
+            foundMediaUrls.add(videoSrc);
         }
     });
 
     // Find the link to the product detail page
-    const linkElement = productNode.closest('a');
-    const url = linkElement ? linkElement.href : window.location.href;
+    let url = window.location.href; // Default to page URL
+    const linkSelectors = ['a.product-link', 'a.item-link', 'a[href*="/dp/"]', 'a[href*="/product/"]', 'h3 a', 'div > a[title]'];
+    for (const selector of linkSelectors) {
+        const linkElement = productNode.querySelector(selector);
+        if(linkElement && linkElement.href) {
+            url = linkElement.href;
+            break;
+        }
+    }
+    // Fallback if no specific link found inside the node
+    if (url === window.location.href) {
+        const closestLink = productNode.closest('a');
+        if (closestLink && closestLink.href) {
+            url = closestLink.href;
+        }
+    }
 
     return { productName: name, price: price, media: media, url: url };
 }
@@ -183,7 +208,6 @@ async function startCrawlingLoop(data) {
         }
         
         const productsOnPage = [];
-        // Common selectors for product list items on various sites
         const itemSelectors = ['.product-item', '.s-result-item', '[class*="product-card"]', 'li[class*="item"]', '[data-component-type="s-search-result"]'];
         let productNodes = [];
         for (const selector of itemSelectors) {
@@ -194,26 +218,24 @@ async function startCrawlingLoop(data) {
         if (productNodes.length > 0) {
             productNodes.forEach(node => productsOnPage.push(scrapeProductInfo(node)));
         } else {
-            // If no list items found, assume it's a single product detail page
+            // Single product page case
             productsOnPage.push(scrapeProductInfo(crawlArea));
         }
 
-        // Send progress back to the panel
         panelFrame.contentWindow.postMessage({ type: 'CRAWL_PROGRESS', data: { currentPage: i, totalPages: maxPages, products: productsOnPage } }, '*');
 
-        // Handle pagination
         if (i < maxPages && paginationMethod === 'next' && paginationSelector) {
             const nextButton = document.evaluate(paginationSelector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
             if (nextButton && typeof nextButton.click === 'function') {
                 nextButton.click();
-                // Wait for the next page to load
-                await new Promise(resolve => setTimeout(resolve, 3000)); // 3-second delay
+                // Wait for page to load
+                await new Promise(resolve => setTimeout(resolve, 3000));
             } else {
                 panelFrame.contentWindow.postMessage({ type: 'CRAWL_ERROR', message: 'Could not find or click the pagination button.' }, '*');
                 break;
             }
-        } else {
-             if (i >= maxPages) break;
+        } else if (i >= maxPages) {
+             break;
         }
     }
     panelFrame.contentWindow.postMessage({ type: 'CRAWL_COMPLETE' }, '*');
