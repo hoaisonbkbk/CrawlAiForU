@@ -26,7 +26,7 @@ function createPanel() {
         top: 15px;
         right: 15px;
         width: 800px;
-        height: 72vh;
+        height: 75vh;
         border: 1px solid #ccc;
         border-radius: 12px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
@@ -57,13 +57,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // --- Bridge: Listen for messages from the panel.html iframe ---
 window.addEventListener('message', (event) => {
-    // Security check: ensure the message is from our iframe
     if (event.source !== panelFrame.contentWindow) return;
 
     const request = event.data;
     if (request.type === 'INIT_INSPECTOR') {
         startInspector(request.mode);
-        // Hide panel temporarily while inspecting for a better view
         panelFrame.style.display = 'none';
     } else if (request.type === 'START_CRAWL') {
         startCrawlingLoop(request.data);
@@ -125,19 +123,25 @@ function onInspectorClick(e) {
     const xpath = getXPath(e.target);
     const messageType = inspectorMode === 'AREA' ? 'AREA_SELECTED' : 'PAGINATION_SELECTED';
     
-    // Send message back to the iframe
     panelFrame.contentWindow.postMessage({ type: messageType, selector: xpath }, '*');
-    
     stopInspector();
-    
-    // Show panel again after selection
     panelFrame.style.display = 'block';
 }
 
-// --- Crawl Logic ---
+// --- Crawl Logic (UPGRADED) ---
 function scrapeProductInfo(productNode) {
-    const nameSelectors = ['h1', 'h2', 'h3', '.product-name', '.item-title', '[class*="title"] a', 'a[title]'];
-    const priceSelectors = ['.price', '[class*="price"]', '.product-price', '[class*="amount"]'];
+    // EXPANDED SELECTORS for better compatibility
+    const nameSelectors = [
+        'h1.product_title.entry-title', // WooCommerce single product
+        '.product-name', '.item-title', '[class*="title"] a', 'a[title]', 'h1', 'h2', 'h3',
+        '[itemprop="name"]' // Schema.org
+    ];
+    const priceSelectors = [
+        '.price .woocommerce-Price-amount.amount', // WooCommerce
+        'p.price', // WooCommerce
+        '[itemprop="price"]', // Schema.org
+        '.price', '[class*="price"]', '.product-price', '[class*="amount"]'
+    ];
     
     let name = null;
     for (const selector of nameSelectors) {
@@ -148,21 +152,48 @@ function scrapeProductInfo(productNode) {
     let price = null;
     for (const selector of priceSelectors) {
         const element = productNode.querySelector(selector);
-        if (element && element.innerText.trim()) { price = element.innerText.trim(); break; }
+        if (element && element.innerText.trim()) { 
+            // Get text from the element and its children, excluding nested price tags (e.g., sale price)
+            price = Array.from(element.childNodes)
+                .filter(node => node.nodeType === Node.TEXT_NODE)
+                .map(n => n.textContent.trim())
+                .join('');
+            if (price) break;
+            price = element.innerText.trim();
+            break;
+        }
     }
 
     const media = [];
     const foundMediaUrls = new Set();
 
-    // Find images, handling lazy-loading and srcset
+    // Find images (UPGRADED to handle data URIs and validate file types)
     productNode.querySelectorAll('img').forEach(img => {
-        let imgSrc = img.src || img.getAttribute('data-src') || img.getAttribute('srcset');
-        if (imgSrc) {
-            // Basic srcset handling: take the first URL
-            const finalSrc = imgSrc.includes(',') ? imgSrc.split(',')[0].trim().split(' ')[0] : imgSrc;
-            if (!foundMediaUrls.has(finalSrc)) {
+        // Create a priority list of attributes to check for the image URL
+        const potentialSrcs = [
+            img.getAttribute('data-src'),
+            img.getAttribute('data-lazy-src'),
+            img.getAttribute('data-srcset'), // Some lazy loaders use this
+            img.getAttribute('data-original'),
+            img.src,
+            img.getAttribute('srcset')
+        ];
+
+        for (const srcAttr of potentialSrcs) {
+            // Skip if the attribute is empty or a data URI
+            if (!srcAttr || srcAttr.startsWith('data:image/')) {
+                continue;
+            }
+
+            // Handle srcset by taking the first URL candidate
+            const finalSrc = srcAttr.includes(',') ? srcAttr.split(',')[0].trim().split(' ')[0] : srcAttr;
+
+            // Validate the image file extension and ensure it's unique
+            const isValidImageType = /\.(webp|png|jpg|jpeg)(\?.*)?$/i.test(finalSrc);
+            if (isValidImageType && !foundMediaUrls.has(finalSrc)) {
                 media.push({ type: 'image', src: finalSrc });
                 foundMediaUrls.add(finalSrc);
+                break; // Once a valid source is found for this image tag, move to the next one
             }
         }
     });
@@ -176,9 +207,13 @@ function scrapeProductInfo(productNode) {
         }
     });
 
-    // Find the link to the product detail page
-    let url = window.location.href; // Default to page URL
-    const linkSelectors = ['a.product-link', 'a.item-link', 'a[href*="/dp/"]', 'a[href*="/product/"]', 'h3 a', 'div > a[title]'];
+    // Find the product detail page link
+    let url = window.location.href;
+    const linkSelectors = [
+        'a.woocommerce-LoopProduct-link', // WooCommerce
+        'a.product-card__link', // Shopify
+        'a.product-link', 'a.item-link', 'a[href*="/dp/"]', 'a[href*="/product/"]', 'h3 a', 'h2 a', 'div > a[title]'
+    ];
     for (const selector of linkSelectors) {
         const linkElement = productNode.querySelector(selector);
         if(linkElement && linkElement.href) {
@@ -186,12 +221,9 @@ function scrapeProductInfo(productNode) {
             break;
         }
     }
-    // Fallback if no specific link found inside the node
     if (url === window.location.href) {
         const closestLink = productNode.closest('a');
-        if (closestLink && closestLink.href) {
-            url = closestLink.href;
-        }
+        if (closestLink && closestLink.href) { url = closestLink.href; }
     }
 
     return { productName: name, price: price, media: media, url: url };
@@ -208,7 +240,13 @@ async function startCrawlingLoop(data) {
         }
         
         const productsOnPage = [];
-        const itemSelectors = ['.product-item', '.s-result-item', '[class*="product-card"]', 'li[class*="item"]', '[data-component-type="s-search-result"]'];
+        // EXPANDED ITEM SELECTORS
+        const itemSelectors = [
+            'li.product', // WooCommerce
+            '.products > .product', // WooCommerce
+            '.product-item', '.s-result-item', '[class*="product-card"]', 'li[class*="item"]', '[data-component-type="s-search-result"]',
+            'div.product' // Generic
+        ];
         let productNodes = [];
         for (const selector of itemSelectors) {
             productNodes = crawlArea.querySelectorAll(selector);
@@ -218,7 +256,6 @@ async function startCrawlingLoop(data) {
         if (productNodes.length > 0) {
             productNodes.forEach(node => productsOnPage.push(scrapeProductInfo(node)));
         } else {
-            // Single product page case
             productsOnPage.push(scrapeProductInfo(crawlArea));
         }
 
@@ -228,8 +265,7 @@ async function startCrawlingLoop(data) {
             const nextButton = document.evaluate(paginationSelector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
             if (nextButton && typeof nextButton.click === 'function') {
                 nextButton.click();
-                // Wait for page to load
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                await new Promise(resolve => setTimeout(resolve, 3500)); // Increased wait time
             } else {
                 panelFrame.contentWindow.postMessage({ type: 'CRAWL_ERROR', message: 'Could not find or click the pagination button.' }, '*');
                 break;
