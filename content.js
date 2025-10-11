@@ -1,17 +1,16 @@
-// utils.js is loaded alongside content.js in manifest.json
-// scrapeProductInfo function is available globally
 // --- Panel State ---
 let panelFrame = null;
 let isPanelVisible = false;
 
 // --- Inspector State ---
 let inspectorActive = false;
-let inspectorMode = null; // Can be 'AREA' or 'PAGINATION'
+let inspectorMode = null; // Can be 'AREA', 'PAGINATION', or 'LOAD_MORE'
 const highlightElement = document.createElement('div');
 highlightElement.style.cssText = `
     position: absolute;
-    background-color: rgba(70, 130, 180, 0.5);
-    border: 2px solid #4682B4;
+    background-color: rgba(0, 122, 255, 0.4);
+    border: 2px solid #007AFF;
+    border-radius: 4px;
     z-index: 99999999;
     pointer-events: none;
     transition: all 0.1s ease-in-out;
@@ -27,11 +26,11 @@ function createPanel() {
         position: fixed;
         top: 15px;
         right: 15px;
-        width: 800px;
-        height: 98vh;
-        border: 1px solid #ccc;
+        width: 600px;
+        height: 95vh;
+        border: none;
         border-radius: 12px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         z-index: 9999999;
         background-color: white;
     `;
@@ -71,6 +70,19 @@ window.addEventListener('message', (event) => {
 });
 
 // --- Inspector Logic ---
+function getXPath(element) {
+    if (element.id !== '') return `id("${element.id}")`;
+    if (element === document.body) return element.tagName.toLowerCase();
+    let ix = 0;
+    const siblings = element.parentNode.childNodes;
+    for (let i = 0; i < siblings.length; i++) {
+        const sibling = siblings[i];
+        if (sibling === element) return `${getXPath(element.parentNode)}/${element.tagName.toLowerCase()}[${ix + 1}]`;
+        if (sibling.nodeType === 1 && sibling.tagName === element.tagName) ix++;
+    }
+    return null;
+}
+
 function startInspector(mode) {
     if (inspectorActive) return;
     inspectorActive = true;
@@ -110,40 +122,20 @@ function onInspectorClick(e) {
     e.preventDefault();
     e.stopPropagation();
     const xpath = getXPath(e.target);
-    const messageType = inspectorMode === 'AREA' ? 'AREA_SELECTED' : 'PAGINATION_SELECTED';
-
+    let messageType = '';
+    if (inspectorMode === 'AREA') messageType = 'AREA_SELECTED';
+    else if (inspectorMode === 'PAGINATION') messageType = 'PAGINATION_SELECTED';
+    else if (inspectorMode === 'LOAD_MORE') messageType = 'LOAD_MORE_SELECTED';
+    
     panelFrame.contentWindow.postMessage({ type: messageType, selector: xpath }, '*');
     stopInspector();
     panelFrame.style.display = 'block';
 }
 
-function getXPath(element) {
-    if (element.id !== '') return `id("${element.id}")`;
-    if (element === document.body) return element.tagName.toLowerCase();
-    let ix = 0;
-    const siblings = element.parentNode.childNodes;
-    for (let i = 0; i < siblings.length; i++) {
-        const sibling = siblings[i];
-        if (sibling === element) return `${getXPath(element.parentNode)}/${element.tagName.toLowerCase()}[${ix + 1}]`;
-        if (sibling.nodeType === 1 && sibling.tagName === element.tagName) ix++;
-    }
-    return null;
-}
-
-
+// --- Crawl Logic (UPGRADED) ---
 function scrapeProductInfo(productNode) {
-    // EXPANDED SELECTORS for better compatibility
-    const nameSelectors = [
-        'h1.product_title.entry-title', // WooCommerce single product
-        '.product-name', '.item-title', '[class*="title"] a', 'a[title]', 'h1', 'h2', 'h3',
-        '[itemprop="name"]' // Schema.org
-    ];
-    const priceSelectors = [
-        '.price .woocommerce-Price-amount.amount', // WooCommerce
-        'p.price', // WooCommerce
-        '[itemprop="price"]', // Schema.org
-        '.price', '[class*="price"]', '.product-price', '[class*="amount"]'
-    ];
+    const nameSelectors = ['h1.product_title.entry-title', 'h1', 'h2', 'h3', '.product-name', '.item-title', '[class*="title"] a', 'a[title]', '[itemprop="name"]'];
+    const priceSelectors = ['.price .woocommerce-Price-amount.amount', 'p.price', '[itemprop="price"]', '.price', '[class*="price"]', '.product-price', '[class*="amount"]'];
     
     let name = null;
     for (const selector of nameSelectors) {
@@ -154,101 +146,53 @@ function scrapeProductInfo(productNode) {
     let price = null;
     for (const selector of priceSelectors) {
         const element = productNode.querySelector(selector);
-        if (element && element.innerText.trim()) { 
-            // Get text from the element and its children, excluding nested price tags (e.g., sale price)
-            price = Array.from(element.childNodes)
-                .filter(node => node.nodeType === Node.TEXT_NODE)
-                .map(n => n.textContent.trim())
-                .join('');
-            if (price) break;
-            price = element.innerText.trim();
-            break;
-        }
+        if (element && element.innerText.trim()) { price = element.innerText.trim(); break; }
     }
 
     const media = [];
     const foundMediaUrls = new Set();
-
-    // Find images (UPGRADED to handle data URIs and validate file types)
     productNode.querySelectorAll('img').forEach(img => {
-        // Create a priority list of attributes to check for the image URL
-        const potentialSrcs = [
-            img.getAttribute('data-src'),
-            img.getAttribute('data-lazy-src'),
-            img.getAttribute('data-srcset'), // Some lazy loaders use this
-            img.getAttribute('data-original'),
-            img.src,
-            img.getAttribute('srcset')
-        ];
-
+        const potentialSrcs = [img.getAttribute('data-src'), img.getAttribute('data-lazy-src'), img.getAttribute('data-srcset'), img.getAttribute('data-original'), img.src, img.getAttribute('srcset')];
         for (const srcAttr of potentialSrcs) {
-            // Skip if the attribute is empty or a data URI
-            if (!srcAttr || srcAttr.startsWith('data:image/')) {
-                continue;
-            }
-
-            // Handle srcset by taking the first URL candidate
+            if (!srcAttr || srcAttr.startsWith('data:image/')) continue;
             const finalSrc = srcAttr.includes(',') ? srcAttr.split(',')[0].trim().split(' ')[0] : srcAttr;
-
-            // Validate the image file extension and ensure it's unique
             const isValidImageType = /\.(webp|png|jpg|jpeg)(\?.*)?$/i.test(finalSrc);
             if (isValidImageType && !foundMediaUrls.has(finalSrc)) {
-                media.push({ type: 'image', src: finalSrc });
+                media.push({ type: 'image', src: new URL(finalSrc, window.location.href).href });
                 foundMediaUrls.add(finalSrc);
-                break; // Once a valid source is found for this image tag, move to the next one
+                break;
             }
         }
     });
 
-    // Find videos
-    productNode.querySelectorAll('video').forEach(video => {
-        const videoSrc = video.src || video.querySelector('source')?.src;
-        if (videoSrc && !foundMediaUrls.has(videoSrc)) {
-            media.push({ type: 'video', src: videoSrc });
-            foundMediaUrls.add(videoSrc);
-        }
-    });
-
-    // Find the product detail page link
     let url = window.location.href;
-    const linkSelectors = [
-        'a.woocommerce-LoopProduct-link', // WooCommerce
-        'a.product-card__link', // Shopify
-        'a.product-link', 'a.item-link', 'a[href*="/dp/"]', 'a[href*="/product/"]', 'h3 a', 'h2 a', 'div > a[title]'
-    ];
+    const linkSelectors = ['a.woocommerce-LoopProduct-link', 'a.product-card__link', 'a.product-link', 'a.item-link', 'a[href*="/dp/"]', 'a[href*="/product/"]', 'h3 a', 'h2 a', 'div > a[title]'];
     for (const selector of linkSelectors) {
         const linkElement = productNode.querySelector(selector);
-        if(linkElement && linkElement.href) {
-            url = linkElement.href;
-            break;
-        }
+        if(linkElement && linkElement.href) { url = new URL(linkElement.href, window.location.href).href; break; }
     }
     if (url === window.location.href) {
         const closestLink = productNode.closest('a');
-        if (closestLink && closestLink.href) { url = closestLink.href; }
+        if (closestLink && closestLink.href) { url = new URL(closestLink.href, window.location.href).href; }
     }
 
     return { productName: name, price: price, media: media, url: url };
 }
 
+// --- Main Crawling Loop (UPGRADED) ---
 async function startCrawlingLoop(data) {
-    const { areaSelector, paginationMethod, maxPages, paginationSelector } = data;
+    const { areaSelector, paginationMethod, maxPages, paginationSelector, scrollCount, loadMoreClicks, loadMoreSelector } = data;
+    let knownProductUrls = new Set();
 
-    for (let i = 1; i <= maxPages; i++) {
+    const scrapeCurrentView = () => {
         let crawlArea = document;
         if (areaSelector) {
             const areaNode = document.evaluate(areaSelector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
             if (areaNode) { crawlArea = areaNode; }
         }
-
-        const productsOnPage = [];
-        // EXPANDED ITEM SELECTORS
-        const itemSelectors = [
-            'li.product', // WooCommerce
-            '.products > .product', // WooCommerce
-            '.product-item', '.s-result-item', '[class*="product-card"]', 'li[class*="item"]', '[data-component-type="s-search-result"]',
-            'div.product' // Generic
-        ];
+        
+        const newProducts = [];
+        const itemSelectors = ['li.product', '.products > .product', '.product-item', '.s-result-item', '[class*="product-card"]', 'li[class*="item"]', '[data-component-type="s-search-result"]', 'div.product'];
         let productNodes = [];
         for (const selector of itemSelectors) {
             productNodes = crawlArea.querySelectorAll(selector);
@@ -256,27 +200,80 @@ async function startCrawlingLoop(data) {
         }
 
         if (productNodes.length > 0) {
-            productNodes.forEach(node => productsOnPage.push(scrapeProductInfo(node)));
-        } else {
-            productsOnPage.push(scrapeProductInfo(crawlArea));
-        }
-
-        panelFrame.contentWindow.postMessage({ type: 'CRAWL_PROGRESS', data: { currentPage: i, totalPages: maxPages, products: productsOnPage } }, '*');
-
-        if (i < maxPages && paginationMethod === 'next' && paginationSelector) {
-            const nextButton = document.evaluate(paginationSelector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-            if (nextButton && typeof nextButton.click === 'function') {
-                nextButton.click();
-                await new Promise(resolve => setTimeout(resolve, 3500)); // Increased wait time
-            } else {
-                panelFrame.contentWindow.postMessage({ type: 'CRAWL_ERROR', message: 'Could not find or click the pagination button.' }, '*');
-                break;
+            productNodes.forEach(node => {
+                const productInfo = scrapeProductInfo(node);
+                if (productInfo.url && productInfo.productName && !knownProductUrls.has(productInfo.url)) {
+                    newProducts.push(productInfo);
+                    knownProductUrls.add(productInfo.url);
+                }
+            });
+        } else { // Single product page case
+            const productInfo = scrapeProductInfo(crawlArea);
+            if (productInfo.url && productInfo.productName && !knownProductUrls.has(productInfo.url)) {
+                newProducts.push(productInfo);
+                knownProductUrls.add(productInfo.url);
             }
-        } else if (i >= maxPages) {
-            break;
         }
+        return newProducts;
+    };
+
+    // --- Execute pagination method ---
+    let initialProducts = scrapeCurrentView();
+    panelFrame.contentWindow.postMessage({ type: 'CRAWL_PROGRESS', data: { products: initialProducts, newProductsCount: initialProducts.length, totalProducts: knownProductUrls.size } }, '*');
+
+    switch (paginationMethod) {
+        case 'next':
+            for (let i = 1; i < maxPages; i++) {
+                const nextButton = document.evaluate(paginationSelector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                if (nextButton && typeof nextButton.click === 'function') {
+                    nextButton.click();
+                    await new Promise(resolve => setTimeout(resolve, 3500));
+                    let products = scrapeCurrentView();
+                    panelFrame.contentWindow.postMessage({ type: 'CRAWL_PROGRESS', data: { products: products, newProductsCount: products.length, totalProducts: knownProductUrls.size } }, '*');
+                } else {
+                    panelFrame.contentWindow.postMessage({ type: 'CRAWL_ERROR', message: 'Could not find or click the "Next" button.' }, '*');
+                    i = maxPages; // End the loop
+                }
+            }
+            break;
+
+        case 'scroll':
+            let lastHeight = document.body.scrollHeight;
+            for (let i = 0; i < scrollCount; i++) {
+                window.scrollTo(0, document.body.scrollHeight);
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                let newHeight = document.body.scrollHeight;
+                if (newHeight === lastHeight) {
+                    // Stop if no more content is loaded after a scroll
+                    break; 
+                }
+                lastHeight = newHeight;
+                
+                let products = scrapeCurrentView();
+                panelFrame.contentWindow.postMessage({ type: 'CRAWL_PROGRESS', data: { products: products, newProductsCount: products.length, totalProducts: knownProductUrls.size } }, '*');
+            }
+            break;
+
+        case 'loadMore':
+            const loadMoreButton = document.evaluate(loadMoreSelector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            if (!loadMoreButton || typeof loadMoreButton.click !== 'function') {
+                panelFrame.contentWindow.postMessage({ type: 'CRAWL_ERROR', message: 'Could not find the "Load More" button.' }, '*');
+            } else {
+                for (let i = 0; i < loadMoreClicks; i++) {
+                    if (loadMoreButton.offsetParent === null) {
+                        // Stop if the button becomes invisible/removed
+                        break; 
+                    }
+                    loadMoreButton.click();
+                    await new Promise(resolve => setTimeout(resolve, 3500));
+                    let products = scrapeCurrentView();
+                    panelFrame.contentWindow.postMessage({ type: 'CRAWL_PROGRESS', data: { products: products, newProductsCount: products.length, totalProducts: knownProductUrls.size } }, '*');
+                }
+            }
+            break;
     }
+
     panelFrame.contentWindow.postMessage({ type: 'CRAWL_COMPLETE' }, '*');
 }
-
 

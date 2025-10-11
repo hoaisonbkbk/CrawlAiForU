@@ -1,63 +1,364 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Crawler Panel</title>
+    <title>Crawl Panel</title>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="style.css">
+    <style>
+        :root {
+            --primary-color: #007AFF; /* Apple's Human Interface Blue */
+            --primary-color-light: #F0F8FF;
+            --secondary-color: #F2F2F7;
+            --border-color: #E5E5EA;
+            --text-color: #1D1D1F;
+            --text-secondary: #6E6E73;
+            --success-color: #34C759;
+            --error-color: #FF3B30;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "San Francisco", Roboto, Helvetica, Arial, sans-serif;
+            --border-radius: 10px;
+            --transition-speed: 0.2s;
+        }
+
+        /* --- General Styles --- */
+        body {
+            font-family: var(--font-family);
+            margin: 0;
+            padding: 20px;
+            background-color: #F9F9F9;
+            color: var(--text-color);
+            font-size: 14px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* --- Header --- */
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .header-icon {
+             width: 24px;
+             height: 24px;
+             color: var(--primary-color);
+        }
+
+        /* --- Step Containers --- */
+        .step {
+            background-color: #FFFFFF;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .step-header {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .step-header svg {
+            width: 20px;
+            height: 20px;
+            color: var(--text-secondary);
+        }
+
+        /* --- Buttons --- */
+        .btn {
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-speed) ease-in-out;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background-color: #0056b3;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 122, 255, 0.2);
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #E8E8ED;
+            border-color: #D1D1D6;
+        }
+
+        .icon-button {
+            padding: 8px;
+            background-color: #FFF;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all var(--transition-speed) ease;
+        }
+        .icon-button svg { width: 16px; height: 16px; color: var(--text-secondary); }
+        .icon-button:hover {
+            background-color: var(--primary-color-light);
+            border-color: var(--primary-color);
+        }
+        .icon-button:hover svg { color: var(--primary-color); }
+
+        /* --- Form Elements --- */
+        .row { display: flex; align-items: center; justify-content: space-between; }
+        .radio-group { display: flex; flex-direction: column; gap: 16px; }
+        .radio-option {
+            position: relative;
+        }
+        label.radio-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            padding-left: 28px; /* Space for the custom radio button */
+        }
+        .radio-group input[type="radio"] { 
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .radio-group .radio-custom {
+            position: absolute;
+            left: 0;
+            top: 1px;
+            width: 18px; height: 18px; border: 2px solid var(--border-color);
+            border-radius: 50%; display: inline-block;
+            transition: all var(--transition-speed) ease;
+        }
+        .radio-group input[type="radio"]:checked + label > .radio-custom {
+            border-color: var(--primary-color);
+        }
+        .radio-group .radio-custom::after {
+            content: ''; width: 10px; height: 10px; background-color: var(--primary-color);
+            border-radius: 50%; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            transition: transform var(--transition-speed) ease;
+        }
+        .radio-group input[type="radio"]:checked + label > .radio-custom::after {
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .radio-content {
+            background-color: var(--secondary-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 10px;
+            margin-left: 28px; /* Indent content */
+            display: none;
+        }
+        input[type="radio"]:checked ~ .radio-content { display: block; }
+        
+        .input-group { display: flex; align-items: center; gap: 8px; }
+        .input-group label { font-weight: 500; }
+        .input-group input[type="text"], .input-group input[type="number"] {
+            flex-grow: 1;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 14px;
+            background-color: #FFF;
+            transition: all var(--transition-speed) ease;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+        }
+
+        /* --- Status & Results --- */
+        .status-message {
+            font-size: 13px;
+            font-style: italic;
+            margin-left: 16px;
+            transition: color var(--transition-speed) ease;
+        }
+        .status-message.success { color: var(--success-color); }
+        .status-message.error { color: var(--error-color); }
+        .status-message.normal { color: var(--text-secondary); }
+
+        #result-wrapper {
+            max-height: 400px;
+            overflow: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        th { font-weight: 600; background-color: var(--secondary-color); }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: #F9F9F9; }
+        td a { color: var(--primary-color); text-decoration: none; }
+        td a:hover { text-decoration: underline; }
+        
+        .trash-icon { cursor: pointer; color: var(--text-secondary); }
+        .trash-icon:hover { color: var(--error-color); transform: scale(1.1); }
+    </style>
 </head>
 <body>
+    <div class="header">
+        <!-- Icon: Layers -->
+        <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+        <h1>Product Crawler Pro</h1>
+    </div>
+
+    <!-- Step 0 -->
     <div class="step">
-        <div class="step-header">Step 0: Select Data Area</div>
-        <div class="flex-between">
-            <span id="area-status-text">Auto-detect Area: entire page</span>
+        <div class="step-header">
+            <!-- Icon: Grid -->
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <span>Step 0: Select Data Area (Optional)</span>
+        </div>
+        <div class="row">
+            <span id="areaStatus" class="status-message normal">Default: Entire Page</span>
             <button id="changeAreaBtn" class="btn btn-secondary">Change Area</button>
         </div>
     </div>
 
-    <div id="step1-detection" class="step hidden">
-        <div class="step-header">Step 1: Confirm Selection</div>
-         <div class="flex-between">
-            <span>Detected <b style="color: #1877f2;">[ 1 ]</b> suitable area.</span>
-            <button id="saveAreaBtn" class="btn">Save the area</button>
+    <!-- Step 1 -->
+    <div class="step">
+        <div class="step-header">
+            <!-- Icon: Repeat -->
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+            <span>Step 1: Choose Pagination Method</span>
         </div>
-    </div>
-
-    <div id="step2-pagination" class="step hidden">
-        <div class="step-header">Step 2: Define Pagination</div>
         <div class="radio-group">
-            <label><input type="radio" name="pagination" value="none" checked> No More Pages/Lists</label>
-            <label><input type="radio" name="pagination" value="next"> Click 'Next' Button/Link</label>
-        </div>
-        <div id="next-btn-finder" class="hidden">
-            <div class="input-group">
-                <div class="input-group-text" id="paginationSelectorText">Locate the 'Next' button</div>
-                <button id="findPaginationBtn" class="btn btn-secondary">Locate</button>
+            <!-- No Pagination -->
+            <div class="radio-option">
+                <input type="radio" id="noPagination" name="pagination" value="none" checked>
+                <label class="radio-label" for="noPagination">
+                    <span class="radio-custom"></span>
+                    <span>No More Pages/Lists</span>
+                </label>
             </div>
-            <label>Max pages to crawl: <input type="number" id="maxPagesInput" value="5" min="1" style="width: 50px; padding: 5px;"></label>
+            
+            <!-- Next Button -->
+            <div class="radio-option">
+                <input type="radio" id="nextButton" name="pagination" value="next">
+                <label class="radio-label" for="nextButton">
+                    <span class="radio-custom"></span>
+                    <span>Click 'Next' Button/Link</span>
+                </label>
+                <div class="radio-content" id="nextButtonContent">
+                    <div class="input-group">
+                        <input type="text" id="nextButtonSelector" placeholder="Select 'Next' button..." readonly>
+                        <button class="icon-button" id="selectNextBtn" title="Select Element">
+                            <!-- Icon: Crosshair -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+                        </button>
+                    </div>
+                    <div class="input-group" style="margin-top: 12px;">
+                        <label for="maxPages">Max Pages:</label>
+                        <input type="number" id="maxPages" value="5" min="1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scroll Down -->
+            <div class="radio-option">
+                <input type="radio" id="scrollDown" name="pagination" value="scroll">
+                <label class="radio-label" for="scrollDown">
+                    <span class="radio-custom"></span>
+                    <span>Scroll Down</span>
+                </label>
+                <div class="radio-content" id="scrollDownContent">
+                    <div class="input-group">
+                        <label for="scrollCount">Scroll Times:</label>
+                        <input type="number" id="scrollCount" value="5" min="1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Load More -->
+            <div class="radio-option">
+                <input type="radio" id="loadMore" name="pagination" value="loadMore">
+                <label class="radio-label" for="loadMore">
+                    <span class="radio-custom"></span>
+                    <span>Click 'Load More' Button</span>
+                </label>
+                <div class="radio-content" id="loadMoreContent">
+                    <div class="input-group">
+                        <input type="text" id="loadMoreSelector" placeholder="Select 'Load More' button..." readonly>
+                        <button class="icon-button" id="selectLoadMoreBtn" title="Select Element">
+                            <!-- Icon: Crosshair -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+                        </button>
+                    </div>
+                     <div class="input-group" style="margin-top: 12px;">
+                        <label for="loadMoreClicks">Max Clicks:</label>
+                        <input type="number" id="loadMoreClicks" value="5" min="1">
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div id="step3-run" class="step hidden">
-        <div class="step-header">Step 3: Save and Run</div>
-        <div class="flex-between">
-            <button id="crawlBtn" class="btn">Save and Run</button>
-            <div id="status"></div>
+    <!-- Step 2: Run & Export -->
+    <div class="step">
+        <div class="step-header">
+            <!-- Icon: Check Circle -->
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            <span>Step 2: Run and Export</span>
         </div>
-    </div>
-
-    <div id="result-wrapper" class="hidden">
-        <div id="result-container">
+        <div class="row">
+            <button id="startCrawlBtn" class="btn btn-primary">
+                <!-- Icon: Play -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <span>Save and Run</span>
+            </button>
+            <span id="crawlStatus" class="status-message"></span>
+        </div>
+        
+        <div id="result-wrapper" style="display: none;">
             <table id="result-table">
                 <thead></thead>
                 <tbody></tbody>
             </table>
         </div>
-        <div id="export-container" class="hidden">
-             <button id="exportCsvBtn" class="btn btn-secondary">Export to CSV</button>
-        </div>
+        <button id="exportBtn" class="btn btn-secondary" style="display: none; margin-top: 16px;">
+            <!-- Icon: Download -->
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>Export to CSV</span>
+        </button>
     </div>
 
-    <script src="panel.js" type="module"></script>
+    <script src="panel.js"></script>
 </body>
 </html>
 
