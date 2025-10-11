@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Crawler Panel</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="step">
+        <div class="step-header">Step 0: Select Data Area</div>
+        <div class="flex-between">
+            <span id="area-status-text">Auto-detect Area: entire page</span>
+            <button id="changeAreaBtn" class="btn btn-secondary">Change Area</button>
+        </div>
+    </div>
+
+    <div id="step1-detection" class="step hidden">
+        <div class="step-header">Step 1: Confirm Selection</div>
+         <div class="flex-between">
+            <span>Detected <b style="color: #1877f2;">[ 1 ]</b> suitable area.</span>
+            <button id="saveAreaBtn" class="btn">Save the area</button>
+        </div>
+    </div>
+
+    <div id="step2-pagination" class="step hidden">
+        <div class="step-header">Step 2: Define Pagination</div>
+        <div class="radio-group">
+            <label><input type="radio" name="pagination" value="none" checked> No More Pages/Lists</label>
+            <label><input type="radio" name="pagination" value="next"> Click 'Next' Button/Link</label>
+        </div>
+        <div id="next-btn-finder" class="hidden">
+            <div class="input-group">
+                <div class="input-group-text" id="paginationSelectorText">Locate the 'Next' button</div>
+                <button id="findPaginationBtn" class="btn btn-secondary">Locate</button>
+            </div>
+            <label>Max pages to crawl: <input type="number" id="maxPagesInput" value="5" min="1" style="width: 50px; padding: 5px;"></label>
+        </div>
+    </div>
+
+    <div id="step3-run" class="step hidden">
+        <div class="step-header">Step 3: Save and Run</div>
+        <div class="flex-between">
+            <button id="crawlBtn" class="btn">Save and Run</button>
+            <div id="status"></div>
+        </div>
+    </div>
+
+    <div id="result-wrapper" class="hidden">
+        <div id="result-container">
+            <table id="result-table">
+                <thead></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div id="export-container" class="hidden">
+             <button id="exportCsvBtn" class="btn btn-secondary">Export to CSV</button>
+        </div>
+    </div>
+
+    <script src="panel.js" type="module"></script>
+</body>
+</html>
+

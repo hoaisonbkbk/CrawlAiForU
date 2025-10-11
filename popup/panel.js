@@ -1,4 +1,5 @@
-document.addEventListener('DOMContentLoaded', function() {
+import { exportToCsv } from '../utils.js';
+document.addEventListener('DOMContentLoaded', function () {
     // --- Get UI Elements ---
     const changeAreaBtn = document.getElementById('changeAreaBtn');
     const areaStatusText = document.getElementById('area-status-text');
@@ -49,7 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
             step3Run.classList.remove('hidden');
         });
     });
-    
+
     findPaginationBtn.addEventListener('click', () => {
         statusDiv.textContent = 'Inspecting page...';
         window.parent.postMessage({ type: 'INIT_INSPECTOR', mode: 'PAGINATION' }, '*');
@@ -72,7 +73,7 @@ document.addEventListener('DOMContentLoaded', function() {
         crawlBtn.disabled = true;
         crawlBtn.textContent = 'Crawling...';
         statusDiv.textContent = '';
-        
+
         window.parent.postMessage({
             type: 'START_CRAWL',
             data: { areaSelector, paginationMethod, paginationSelector, maxPages }
@@ -129,9 +130,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const thead = resultTable.querySelector('thead');
         const tbody = resultTable.querySelector('tbody');
 
-        let headerHTML = '<tr><th>#</th><th>Product Name</th><th>Price</th><th>Product URL</th>';
+        let headerHTML = '<tr><th width="30">#</th><th>Name</th><th>Price</th><th>Link</th>';
         for (let i = 1; i <= maxMediaCount; i++) headerHTML += `<th>Media ${i}</th>`;
-        headerHTML += '<th>Action</th></tr>';
+        headerHTML += '<th width="30">Action</th></tr>';
         thead.innerHTML = headerHTML;
 
         tbody.innerHTML = '';
@@ -139,15 +140,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const row = document.createElement('tr');
             row.dataset.index = index;
 
-            let rowHTML = `<td>${index + 1}</td>
-                           <td><div style="max-width: 150px; overflow: hidden; text-overflow: ellipsis;" title="${product.productName || ''}">${product.productName || ''}</div></td>
+            let rowHTML = `<td width="30">${index + 1}</td>
+                           <td><div style="max-width: 100px; overflow: hidden; text-overflow: ellipsis;" title="${product.productName || ''}">${product.productName || ''}</div></td>
                            <td>${product.price || ''}</td>
                            <td><a href="${product.url}" target="_blank">Link</a></td>`;
-            
+
             for (let i = 0; i < maxMediaCount; i++) {
                 const mediaItem = product.media && product.media[i] ? product.media[i] : null;
                 let cellContent = '';
-                 if (mediaItem) {
+                if (mediaItem) {
                     if (mediaItem.type === 'image') {
                         cellContent = `<a href="${mediaItem.src}" target="_blank"><img src="${mediaItem.src}" width="40" alt="product media" style="display:block; margin:auto;"></a>`;
                     } else if (mediaItem.type === 'video') {
@@ -157,15 +158,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 rowHTML += `<td>${cellContent}</td>`;
             }
 
-            rowHTML += `<td><button class="delete-btn">🗑️</button></td>`;
+            rowHTML += `<td><button width="30" class="delete-btn">🗑️</button></td>`;
             row.innerHTML = rowHTML;
             tbody.appendChild(row);
         });
 
         exportContainer.classList.toggle('hidden', allCrawledProducts.length === 0);
     }
-    
-    resultTable.addEventListener('click', function(e) {
+
+    resultTable.addEventListener('click', function (e) {
         if (e.target && e.target.classList.contains('delete-btn')) {
             const row = e.target.closest('tr');
             const indexToRemove = parseInt(row.dataset.index, 10);
@@ -173,46 +174,6 @@ document.addEventListener('DOMContentLoaded', function() {
             renderTable();
         }
     });
-
-    // --- CSV Export Logic ---
-    function exportToCsv() {
-        if (allCrawledProducts.length === 0) return;
-
-        const escapeCsvCell = (cell) => {
-            if (cell === null || cell === undefined) return '';
-            const cellString = String(cell);
-            if (cellString.search(/("|,|\n)/g) >= 0) {
-                return `"${cellString.replace(/"/g, '""')}"`;
-            }
-            return cellString;
-        };
-        
-        let headers = ['Product Name', 'Price', 'Product URL'];
-        for (let i = 1; i <= maxMediaCount; i++) headers.push(`Media ${i} URL`);
-        const csvRows = [headers.join(',')];
-
-        allCrawledProducts.forEach(product => {
-            const row = [
-                escapeCsvCell(product.productName),
-                escapeCsvCell(product.price),
-                escapeCsvCell(product.url)
-            ];
-            for (let i = 0; i < maxMediaCount; i++) {
-                const mediaUrl = product.media && product.media[i] ? product.media[i].src : '';
-                row.push(escapeCsvCell(mediaUrl));
-            }
-            csvRows.push(row.join(','));
-        });
-
-        const csvString = csvRows.join('\n');
-        const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); // Add BOM for Excel
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'products_export.csv';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
 
     // --- Initial State Setup ---
     function initialize() {

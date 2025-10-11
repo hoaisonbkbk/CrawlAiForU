@@ -14,19 +14,29 @@
     "default_title": "Toggle Crawler Panel"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "utils.js",
+        "content.js"
+      ],
+      "type": "module"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["panel.html"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "popup/panel.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }
-
