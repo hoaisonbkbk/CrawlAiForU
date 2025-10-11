@@ -23,10 +23,10 @@
         "<all_urls>"
       ],
       "js": [
-        "utils.js",
+     
         "content.js"
-      ],
-      "type": "module"
+      ]
+     
     }
   ],
   "web_accessible_resources": [
