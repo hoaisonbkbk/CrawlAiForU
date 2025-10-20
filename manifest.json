@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Product Data Crawler Pro",
-  "version": "1.0",
-  "description": "An advanced tool to crawl product data from web pages with a persistent control panel.",
+  "name": "Web Crawler Extension",
+  "version": "1.0.0",
+  "description": "Easily crawl and extract structured data from websites, then export results to CSV, JSON, or Excel.",
   "permissions": [
     "activeTab",
     "scripting"
@@ -11,7 +11,12 @@
     "<all_urls>"
   ],
   "action": {
-    "default_title": "Toggle Crawler Panel"
+    "default_title": "Toggle Crawler Panel",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "background": {
     "service_worker": "background.js",
@@ -29,6 +34,11 @@
      
     }
   ],
+    "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "web_accessible_resources": [
     {
       "resources": [
