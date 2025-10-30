@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let nextBtnSelector = null;
     let loadMoreBtnSelector = null;
     let allProducts = new Map(); // Use a Map to prevent duplicates
-
+    
     // --- Event Listeners ---
 
     // Inspector buttons
@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Show the results section if there's data
         if (allProducts.size > 0) {
             resultWrapper.style.display = 'block';
-            exportBtn.style.display = 'block';
+            exportBtn.style.display = 'inline-flex';
         }
     }
     

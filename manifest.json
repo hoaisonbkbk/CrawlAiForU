@@ -28,7 +28,8 @@
         "<all_urls>"
       ],
       "js": [
-     
+        "utils.js",
+        "scraper.js",
         "content.js"
       ]
      
@@ -42,6 +43,8 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "scraper.js",
+        "utils.js",
         "popup/panel.html"
       ],
       "matches": [
