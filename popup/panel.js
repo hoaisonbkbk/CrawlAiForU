@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (allProducts.size > 0) {
             resultWrapper.style.display = 'block';
             exportBtn.style.display = 'inline-flex';
-            startCrawlBtn.style.display = 'none';
+            //startCrawlBtn.style.display = 'none';
         }
     }
     
